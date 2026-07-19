@@ -1,0 +1,28 @@
+[wait] running=0.0 waiting=0.0 (t=30s)
+[wait] IDLE — starting PDF drive
+[pdf-live] author=qwen36-27b nonce=PDFX00022876
+{"level":30,"time":1784500022937,"app":"simoneos","env":"development","error":{},"msg":"multimodal.not_available"}
+[pdf-live] session=document-anonymizer-1784500022957
+{"level":30,"time":1784500022938,"app":"simoneos","env":"development","msg":"surrogate.auto_binding_disabled_no_owner_programs"}
+{"level":30,"time":1784500022939,"app":"simoneos","env":"development","provider":"mock","model":"qwen36-27b","msg":"llm.middleware_installed"}
+{"level":30,"time":1784500022949,"app":"simoneos","env":"development","port":0,"database":":memory:","sessionLogs":{"enabled":true,"rootDir":"/home/simone/document-anonymizer/session-logs"},"programs":["document-anonymizer"],"msg":"server.constructed"}
+[pdf-live] mode=ingest
+[pdf-live] uploaded fileId=2f28d69d-4785-4e1a-9368-38e30c2b20e6
+Warning: UnknownErrorException: Unable to load font data at: file:///home/simone/document-anonymizer/node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf
+[pdf-live] mode=detect_pii
+[pdf-live] mode=anonymize
+[pdf-live] mode=finalize
+[pdf-live] mode=complete
+
+=== DOCUMENT-ANONYMIZER PDF LIVE-DRIVE VERDICT ===
+final_mode=complete extraction_kind=pdf_pdfjs
+source_full_text_len=143 output_text_len=98 mapping_entries=5
+pdf_extracted_with_nonce=true nonce_in_output=false nonce_in_mapping=true reverse_byte_exact=true
+pdf_anonymize_engaged=true
+--- source (extracted from PDF, first 200) ---
+CONFIDENTIAL INTAKE Patient Dana Wells email dana.PDFX00022876@example.com phone +1-202-555-0111 case CASE-PDFX00022876 seen at Meridian Clinic
+--- anonymized output (first 200) ---
+CONFIDENTIAL INTAKE Patient [PERSON_1] email [EMAIL_1] phone [PHONE_1] case [ID_1] seen at [ORG_1]
+{"level":30,"time":1784500259909,"app":"simoneos","env":"development","msg":"shutdown.drain_start"}
+{"level":30,"time":1784500259913,"app":"simoneos","env":"development","msg":"shutdown.clean"}
+DRIVE_EXIT=0
