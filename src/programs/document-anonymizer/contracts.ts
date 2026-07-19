@@ -52,10 +52,26 @@ export const stageClassification = [
     "rationale": "pure compute: anonymize can be implemented as deterministic local logic against the frozen stage contract."
   },
   {
-    "slug": "export_document",
+    "slug": "export_anonymized",
     "archetype": "pure-compute",
     "export_kind": "export_docx",
-    "rationale": "pure compute export: export_document is bound to export_docx descriptor export_document.output."
+    "rationale": "pure compute export: export_anonymized is bound to export_docx descriptor export_anonymized.output."
+  },
+  {
+    "slug": "rehydrate",
+    "archetype": "pure-compute",
+    "rationale": "pure compute: rehydrate can be implemented as deterministic local logic against the frozen stage contract."
+  },
+  {
+    "slug": "export_restored",
+    "archetype": "pure-compute",
+    "export_kind": "export_docx",
+    "rationale": "pure compute export: export_restored is bound to export_docx descriptor export_restored.output."
+  },
+  {
+    "slug": "finalize",
+    "archetype": "pure-compute",
+    "rationale": "pure compute: finalize can be implemented as deterministic local logic against the frozen stage contract."
   },
   {
     "slug": "complete",
@@ -80,10 +96,10 @@ export const stageDomainSpecs = {
       ]
     },
     "rules": [
-      "Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."
+      "Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."
     ],
     "invariants": [
-      "each entity has a verbatim text span and a type; entity_count equals the number of entities."
+      "each entity has a verbatim text span and a type."
     ]
   },
   "anonymize": {
@@ -104,13 +120,13 @@ export const stageDomainSpecs = {
       ]
     },
     "rules": [
-      "Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."
+      "Assign one stable typed token per unique original PII string; deterministic replace; invertible mapping."
     ],
     "invariants": [
-      "Applying the mapping backward over output_text reproduces the original text exactly."
+      "mapping backward reproduces original."
     ]
   },
-  "export_document": {
+  "export_anonymized": {
     "reads": [
       "anonymize.output.result_json"
     ],
@@ -127,22 +143,76 @@ export const stageDomainSpecs = {
       ]
     },
     "rules": [
-      "Render the anonymized output_text into a deterministic DOCX export."
+      "Render anonymized output_text into DOCX."
     ],
     "invariants": [
-      "Do not call an LLM or provider while rendering export bytes."
+      "No LLM during render."
+    ]
+  },
+  "rehydrate": {
+    "reads": [
+      "inputs.source_document.full_text",
+      "inputs.initial_user_text"
+    ],
+    "produces": {
+      "result_json": {
+        "stage": "string",
+        "output_text": "string",
+        "format": "string",
+        "restored_count": "number"
+      },
+      "items_json": [
+        "restored:<token>"
+      ]
+    },
+    "rules": [
+      "Reverse anonymization using the mapping."
+    ],
+    "invariants": [
+      "No token remains."
+    ]
+  },
+  "export_restored": {
+    "reads": [
+      "rehydrate.output.result_json"
+    ],
+    "produces": {
+      "result_json": {
+        "stage": "string",
+        "docx_base64": "string",
+        "docx_bytes": "number",
+        "sha256": "string",
+        "section_count": "number"
+      },
+      "items_json": [
+        "docx_export:<sha256>"
+      ]
+    },
+    "rules": [
+      "Render restored output_text into DOCX."
+    ],
+    "invariants": [
+      "No LLM during render."
     ]
   }
 } as Record<string, StageDomainSpec>;
 
 export const stageActionContracts = [
   {
-    "action": "complete_ingest",
+    "action": "advance_ingest_to_detect_pii",
     "stage": "ingest",
     "target": "detect_pii",
     "archetype": "pure-compute",
     "output_path": "ingest.output",
     "guard_path": "inputs.source_document_ready"
+  },
+  {
+    "action": "advance_ingest_to_rehydrate",
+    "stage": "ingest",
+    "target": "rehydrate",
+    "archetype": "pure-compute",
+    "output_path": "ingest.output",
+    "guard_path": "ingest.rehydrate_selected"
   },
   {
     "action": "complete_detect_pii",
@@ -155,19 +225,44 @@ export const stageActionContracts = [
   {
     "action": "complete_anonymize",
     "stage": "anonymize",
-    "target": "export_document",
+    "target": "export_anonymized",
     "archetype": "pure-compute",
     "output_path": "anonymize.output",
     "guard_path": "anonymize.ready"
   },
   {
-    "action": "complete_export_document",
-    "stage": "export_document",
+    "action": "complete_export_anonymized",
+    "stage": "export_anonymized",
+    "target": "finalize",
+    "archetype": "pure-compute",
+    "output_path": "export_anonymized.output",
+    "guard_path": "export_anonymized.ready",
+    "export_kind": "export_docx"
+  },
+  {
+    "action": "complete_rehydrate",
+    "stage": "rehydrate",
+    "target": "export_restored",
+    "archetype": "pure-compute",
+    "output_path": "rehydrate.output",
+    "guard_path": "rehydrate.ready"
+  },
+  {
+    "action": "complete_export_restored",
+    "stage": "export_restored",
+    "target": "finalize",
+    "archetype": "pure-compute",
+    "output_path": "export_restored.output",
+    "guard_path": "export_restored.ready",
+    "export_kind": "export_docx"
+  },
+  {
+    "action": "complete_finalize",
+    "stage": "finalize",
     "target": "complete",
     "archetype": "pure-compute",
-    "output_path": "export_document.output",
-    "guard_path": "export_document.ready",
-    "export_kind": "export_docx"
+    "output_path": "finalize.output",
+    "guard_path": "finalize.ready"
   }
 ] as const;
 

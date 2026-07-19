@@ -3,7 +3,7 @@ program:
   name: "Document Anonymizer"
   runtime: typescript-node
 mandate: |-
-  Reversibly anonymize documents (DOCX/MD/TXT) with a mapping file for rebuilding the original.
+  Reversibly anonymize documents (DOCX/MD/TXT) with a mapping file for rebuilding the original; rehydrate rebuilds the original from an anonymized document + mapping.
 notebook:
   purpose: "Durable intake notes and user ideas for Document Anonymizer."
 research:

@@ -20,7 +20,7 @@ describe('generated document upload smoke', () => {
       scripted(effect('begin_work', {})),
       scripted(effect('request_documents', {})),
       scripted(effect('ingest_documents', {}, 'stage_output')),
-      scripted(effect('complete_ingest', { __stage_runtime: { now_iso: '2026-07-16T00:00:00.000Z', random: 0.25 } }, 'stage_output')),
+      scripted(effect('advance_ingest_to_detect_pii', { __stage_runtime: { now_iso: '2026-07-16T00:00:00.000Z', random: 0.25 } }, 'stage_output')),
     ], async ({ client, sessionId }) => {
       const upload = await uploadText(client, sessionId, 'source.txt', content);
       const [fileRef] = refsFromUpload(upload);

@@ -16,7 +16,7 @@ export function createDocumentAnonymizerProgramEntry(): ProgramEntry {
   return {
     spec,
     reactionHandlers,
-    artifactPolicy: { rules: [{ artifactType: 'docx_export', title: 'Document Anonymizer DOCX Export', summary: 'Deterministically rendered DOCX artifact; payload bytes are base64 in domain state.', payloadRef: 'export_document.output', whenAllPaths: ['export_document.output.result_json'] }] },
+    artifactPolicy: { rules: [{ artifactType: 'anonymization_mapping', title: 'Anonymization Mapping', summary: 'Reversible token-to-original mapping plus anonymized text as JSON in domain state; enables rebuilding the original document.', payloadRef: 'anonymize.output', whenAllPaths: ['anonymize.output.result_json'] }, { artifactType: 'docx_export', title: 'Document Anonymizer DOCX Export', summary: 'Deterministically rendered DOCX artifact; payload bytes are base64 in domain state.', payloadRef: 'export_anonymized.output', whenAllPaths: ['export_anonymized.output.result_json'] }, { artifactType: 'docx_export', title: 'Document Anonymizer DOCX Export', summary: 'Deterministically rendered DOCX artifact; payload bytes are base64 in domain state.', payloadRef: 'export_restored.output', whenAllPaths: ['export_restored.output.result_json'] }] },
     createAdapters: (ctx) => {
       const adapters = createProgramAdapters(spec, ctx, handlers);
       if (spec.tools) {

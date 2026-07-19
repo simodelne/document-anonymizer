@@ -46,7 +46,7 @@ function sectionsFromDomain(domain: Record<string, unknown>, stage: string): Exp
   }
   return sections.length > 0
     ? sections
-    : [{ title: humanizePath('export_document'), body: 'No accumulated domain state was available for export.' }];
+    : [{ title: humanizePath('export_anonymized'), body: 'No accumulated domain state was available for export.' }];
 }
 
 function sectionForDomainValue(path: string, value: unknown): ExportSection | undefined {

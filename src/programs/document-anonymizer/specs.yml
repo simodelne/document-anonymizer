@@ -3,7 +3,7 @@ termination: BoundedSession
 topology: CyclicTopology
 pure: true
 preamble: |-
-  Program: Document Anonymizer. Reversibly anonymize an uploaded document (docx, markdown, or plain text): extract the text, detect PII, replace each entity with a stable typed token, and produce the anonymized document in the same format plus a mapping file listing every substitution so the original can be rebuilt.
+  Program: Document Anonymizer. Reversibly anonymize an uploaded document (docx, markdown, or plain text): extract the text, detect PII, replace each entity with a stable typed token, and produce the anonymized document plus a mapping file for rebuilding the original. Also supports a rehydrate operation that rebuilds the original from an anonymized document and its mapping.
 
   This spec was synthesized mechanically by pgas-new.
 initial: intake
@@ -51,7 +51,8 @@ modes:
           path: intake.started
   ingest:
     vocabulary:
-      - complete_ingest
+      - advance_ingest_to_detect_pii
+      - advance_ingest_to_rehydrate
       - record_user_note
       - session_new
       - session_abort_current
@@ -71,6 +72,10 @@ modes:
         guard:
           kind: FieldTruthy
           path: inputs.source_document_ready
+      - target: rehydrate
+        guard:
+          kind: FieldTruthy
+          path: ingest.rehydrate_selected
     preconditions:
       request_documents:
         - kind: FieldFalsy
@@ -82,7 +87,10 @@ modes:
           path: decisions.documents_received
         - kind: FieldFalsy
           path: inputs.source_document_ready
-      complete_ingest:
+      advance_ingest_to_detect_pii:
+        - kind: FieldTruthy
+          path: inputs.source_document_ready
+      advance_ingest_to_rehydrate:
         - kind: FieldTruthy
           path: inputs.source_document_ready
   detect_pii:
@@ -118,13 +126,70 @@ modes:
       - widget_output
       - stage_output
     transitions:
-      - target: export_document
+      - target: export_anonymized
         guard:
           kind: FieldTruthy
           path: anonymize.ready
-  export_document:
+  export_anonymized:
     vocabulary:
-      - complete_export_document
+      - complete_export_anonymized
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+    transitions:
+      - target: finalize
+        guard:
+          kind: FieldTruthy
+          path: export_anonymized.ready
+  rehydrate:
+    vocabulary:
+      - complete_rehydrate
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+    transitions:
+      - target: export_restored
+        guard:
+          kind: FieldTruthy
+          path: rehydrate.ready
+  export_restored:
+    vocabulary:
+      - complete_export_restored
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+    transitions:
+      - target: finalize
+        guard:
+          kind: FieldTruthy
+          path: export_restored.ready
+  finalize:
+    vocabulary:
+      - complete_finalize
       - record_user_note
       - session_new
       - session_abort_current
@@ -140,7 +205,7 @@ modes:
       - target: complete
         guard:
           kind: FieldTruthy
-          path: export_document.ready
+          path: finalize.ready
   complete:
     vocabulary:
       - session_status
@@ -151,10 +216,14 @@ modes:
     transitions: []
 proceed_to:
   begin_work: ingest
-  complete_ingest: detect_pii
+  advance_ingest_to_detect_pii: detect_pii
+  advance_ingest_to_rehydrate: rehydrate
   complete_detect_pii: anonymize
-  complete_anonymize: export_document
-  complete_export_document: complete
+  complete_anonymize: export_anonymized
+  complete_export_anonymized: finalize
+  complete_rehydrate: export_restored
+  complete_export_restored: finalize
+  complete_finalize: complete
 projection:
   intake:
     include:
@@ -168,14 +237,21 @@ projection:
     include:
       - inputs.initial_user_text
       - inputs.source_document_ready
+      - ingest.rehydrate_selected
       - detect_pii.ready
       - anonymize.ready
-      - export_document.ready
+      - export_anonymized.ready
+      - rehydrate.ready
+      - export_restored.ready
+      - finalize.ready
       - ingest.output
       - detect_pii.result_json
       - detect_pii.items_json
       - anonymize.output
-      - export_document.output
+      - export_anonymized.output
+      - rehydrate.output
+      - export_restored.output
+      - finalize.output
       - inputs.source_document
       - inputs.source_document.status
       - inputs.source_document.full_text
@@ -191,6 +267,7 @@ projection:
       - notebook.entries
       - notebook.pins
       - inputs.source_document_ready
+      - ingest.rehydrate_selected
       - ingest.output
       - inputs.document_intake
       - inputs.document_intake.status
@@ -246,18 +323,87 @@ projection:
       - inputs.source_document.extraction_kind
       - inputs.source_document_ready
     exclude: []
-  export_document:
+  export_anonymized:
     include:
       - inputs.user_text
       - inputs.initial_user_text
       - notebook.entries
       - notebook.pins
-      - export_document.ready
+      - export_anonymized.ready
       - ingest.output
       - detect_pii.result_json
       - detect_pii.items_json
       - anonymize.output
-      - export_document.output
+      - export_anonymized.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+  rehydrate:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - rehydrate.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - export_anonymized.output
+      - rehydrate.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+  export_restored:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - export_restored.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - export_anonymized.output
+      - rehydrate.output
+      - export_restored.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+  finalize:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - finalize.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - export_anonymized.output
+      - rehydrate.output
+      - export_restored.output
+      - finalize.output
       - inputs.source_document
       - inputs.source_document.status
       - inputs.source_document.full_text
@@ -278,15 +424,24 @@ prompts:
   detect_pii: |-
     Perform the detect_pii stage for Document Anonymizer.
     Author-provided domain spec for detect_pii is normative; implement it exactly and do not infer alternate business logic.
-    {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}
+    {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."],"invariants":["each entity has a verbatim text span and a type."]}
   anonymize: |-
     Perform the anonymize stage for Document Anonymizer.
     Author-provided domain spec for anonymize is normative; implement it exactly and do not infer alternate business logic.
-    {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}
-  export_document: |-
-    Perform the export_document stage for Document Anonymizer.
-    Author-provided domain spec for export_document is normative; implement it exactly and do not infer alternate business logic.
-    {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}
+    {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; deterministic replace; invertible mapping."],"invariants":["mapping backward reproduces original."]}
+  export_anonymized: |-
+    Perform the export_anonymized stage for Document Anonymizer.
+    Author-provided domain spec for export_anonymized is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render anonymized output_text into DOCX."],"invariants":["No LLM during render."]}
+  rehydrate: |-
+    Perform the rehydrate stage for Document Anonymizer.
+    Author-provided domain spec for rehydrate is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["inputs.source_document.full_text","inputs.initial_user_text"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","restored_count":"number"},"items_json":["restored:<token>"]},"rules":["Reverse anonymization using the mapping."],"invariants":["No token remains."]}
+  export_restored: |-
+    Perform the export_restored stage for Document Anonymizer.
+    Author-provided domain spec for export_restored is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["rehydrate.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render restored output_text into DOCX."],"invariants":["No LLM during render."]}
+  finalize: Perform the finalize stage for Document Anonymizer.
 ingestion:
   user_text:
     - inputs.user_text
@@ -333,7 +488,7 @@ action_map:
     description: Control-plane help command.
     mutations: []
     channel: widget_output
-  complete_ingest:
+  advance_ingest_to_detect_pii:
     description: Run deterministic pure-compute wrapper for ingest and advance exactly one hop to detect_pii.
     result_path: ingest.output
     mutations:
@@ -341,11 +496,19 @@ action_map:
         path: inputs.source_document_ready
         value: true
     channel: stage_output
+  advance_ingest_to_rehydrate:
+    description: Run deterministic pure-compute wrapper for ingest and advance exactly one hop to rehydrate.
+    result_path: ingest.output
+    mutations:
+      - op: MSet
+        path: ingest.rehydrate_selected
+        value: true
+    channel: stage_output
   complete_detect_pii:
-    description: 'Record runtime LLM reasoning output for detect_pii and advance exactly one hop to anonymize. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
+    description: 'Record runtime LLM reasoning output for detect_pii and advance exactly one hop to anonymize. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."],"invariants":["each entity has a verbatim text span and a type."]}'
     arg_descriptions:
-      result_json: 'JSON string result for the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
-      items_json: 'JSON string array of item ids or summaries produced by the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
+      result_json: 'JSON string result for the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."],"invariants":["each entity has a verbatim text span and a type."]}'
+      items_json: 'JSON string array of item ids or summaries produced by the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."],"invariants":["each entity has a verbatim text span and a type."]}'
     mutations:
       - op: MSet
         path: detect_pii.ready
@@ -358,19 +521,43 @@ action_map:
         from_arg: items_json
     channel: widget_output
   complete_anonymize:
-    description: 'Run deterministic pure-compute wrapper for anonymize and advance exactly one hop to export_document. Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}'
+    description: 'Run deterministic pure-compute wrapper for anonymize and advance exactly one hop to export_anonymized. Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; deterministic replace; invertible mapping."],"invariants":["mapping backward reproduces original."]}'
     result_path: anonymize.output
     mutations:
       - op: MSet
         path: anonymize.ready
         value: true
     channel: stage_output
-  complete_export_document:
-    description: 'Run deterministic pure-compute wrapper for export_document and advance exactly one hop to complete. Author-provided domain spec for export_document: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}'
-    result_path: export_document.output
+  complete_export_anonymized:
+    description: 'Run deterministic pure-compute wrapper for export_anonymized and advance exactly one hop to finalize. Author-provided domain spec for export_anonymized: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render anonymized output_text into DOCX."],"invariants":["No LLM during render."]}'
+    result_path: export_anonymized.output
     mutations:
       - op: MSet
-        path: export_document.ready
+        path: export_anonymized.ready
+        value: true
+    channel: stage_output
+  complete_rehydrate:
+    description: 'Run deterministic pure-compute wrapper for rehydrate and advance exactly one hop to export_restored. Author-provided domain spec for rehydrate: {"reads":["inputs.source_document.full_text","inputs.initial_user_text"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","restored_count":"number"},"items_json":["restored:<token>"]},"rules":["Reverse anonymization using the mapping."],"invariants":["No token remains."]}'
+    result_path: rehydrate.output
+    mutations:
+      - op: MSet
+        path: rehydrate.ready
+        value: true
+    channel: stage_output
+  complete_export_restored:
+    description: 'Run deterministic pure-compute wrapper for export_restored and advance exactly one hop to finalize. Author-provided domain spec for export_restored: {"reads":["rehydrate.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render restored output_text into DOCX."],"invariants":["No LLM during render."]}'
+    result_path: export_restored.output
+    mutations:
+      - op: MSet
+        path: export_restored.ready
+        value: true
+    channel: stage_output
+  complete_finalize:
+    description: Run deterministic pure-compute wrapper for finalize and advance exactly one hop to complete.
+    result_path: finalize.output
+    mutations:
+      - op: MSet
+        path: finalize.ready
         value: true
     channel: stage_output
   request_documents:
@@ -407,9 +594,13 @@ schema:
   inputs.initial_user_text: string
   intake.started: boolean
   inputs.source_document_ready: boolean
+  ingest.rehydrate_selected: boolean
   detect_pii.ready: boolean
   anonymize.ready: boolean
-  export_document.ready: boolean
+  export_anonymized.ready: boolean
+  rehydrate.ready: boolean
+  export_restored.ready: boolean
+  finalize.ready: boolean
   ingest.output: object
   ingest.output.result_json: string
   ingest.output.items_json: string
@@ -420,10 +611,22 @@ schema:
   anonymize.output.result_json: string
   anonymize.output.items_json: string
   anonymize.output.digest: string
-  export_document.output: object
-  export_document.output.result_json: string
-  export_document.output.items_json: string
-  export_document.output.digest: string
+  export_anonymized.output: object
+  export_anonymized.output.result_json: string
+  export_anonymized.output.items_json: string
+  export_anonymized.output.digest: string
+  rehydrate.output: object
+  rehydrate.output.result_json: string
+  rehydrate.output.items_json: string
+  rehydrate.output.digest: string
+  export_restored.output: object
+  export_restored.output.result_json: string
+  export_restored.output.items_json: string
+  export_restored.output.digest: string
+  finalize.output: object
+  finalize.output.result_json: string
+  finalize.output.items_json: string
+  finalize.output.digest: string
   inputs.document_intake: object
   inputs.document_intake.file_refs: array
   inputs.document_intake.file_refs.*: object
@@ -460,18 +663,31 @@ guidance:
   detect_pii:
     - Use the synthesized JSON-string scalar fields for structured handler results.
     - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
-    - 'Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}.'
+    - 'Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE."],"invariants":["each entity has a verbatim text span and a type."]}.'
     - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
   anonymize:
     - Use the synthesized JSON-string scalar fields for structured handler results.
     - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
-    - 'Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}.'
+    - 'Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; deterministic replace; invertible mapping."],"invariants":["mapping backward reproduces original."]}.'
     - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
-  export_document:
+  export_anonymized:
     - Use the synthesized JSON-string scalar fields for structured handler results.
     - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
-    - 'Author-provided domain spec for export_document: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}.'
+    - 'Author-provided domain spec for export_anonymized: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render anonymized output_text into DOCX."],"invariants":["No LLM during render."]}.'
     - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+  rehydrate:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - 'Author-provided domain spec for rehydrate: {"reads":["inputs.source_document.full_text","inputs.initial_user_text"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","restored_count":"number"},"items_json":["restored:<token>"]},"rules":["Reverse anonymization using the mapping."],"invariants":["No token remains."]}.'
+    - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+  export_restored:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - 'Author-provided domain spec for export_restored: {"reads":["rehydrate.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render restored output_text into DOCX."],"invariants":["No LLM during render."]}.'
+    - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+  finalize:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
 control_plane:
   version: 1
   session:
