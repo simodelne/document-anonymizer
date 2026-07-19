@@ -5,17 +5,26 @@ Declared gaps in the synthesized `document-anonymizer` program. Everything else
 anonymization, DOCX output, mapping artifact, rehydrate) is implemented and
 verified.
 
-## `document_extraction_pdf` — host connector required
+## `document_extraction_pdf` — WIRED (host connector)
 
-PDF **input** is not functional out of the box. General PDF text extraction
-needs host-side font/CMap/ToUnicode handling (subset fonts defeat naive
-scraping), which the pgas-new foundry does not synthesize. A typed seam is
-provided at `src/programs/document-anonymizer/extract/pdf-connector.ts`
-(`DocumentExtractionHostConnector`); wire a host implementation (pdf.js,
-`pdftotext`, or a cloud extractor) and route `document_upload` PDF refs to it
-before `detect_pii`. Until then PDF uploads are not accepted; DOCX/MD/TXT work.
+PDF **input works**. General PDF text extraction needs host-side
+font/CMap/ToUnicode handling (subset fonts defeat naive scraping), which the
+pgas-new foundry does not synthesize — so it is provided as a host connector at
+`src/programs/document-anonymizer/extract/pdf.ts` (`extractPdfText`), backed by
+[`pdfjs-dist`](https://www.npmjs.com/package/pdfjs-dist) (Mozilla pdf.js). It is
+portable pure-JS — no system binary required. The extraction handler
+(`handlers/index.ts`) accepts `application/pdf`, decodes the engine-injected
+`content_base64`, and routes it through `extractPdfText` before `detect_pii`
+(`extraction_kind: pdf_pdfjs`).
 
-Scanned / image-only PDFs (OCR) are permanently out of scope.
+To swap the backend (e.g. `pdftotext`/poppler or a cloud extractor), replace the
+body of `extractPdfText` — its `Uint8Array -> {text,char_count}` contract is the
+seam. Extraction **fails closed**: an unparseable or text-less PDF returns a
+`blocked_extraction_failed` source with an explicit reason rather than silent
+empty content.
+
+Scanned / image-only PDFs (OCR) are permanently out of scope — they yield no
+extractable text and are refused with a clear reason.
 
 ## PDF / style-preserving DOCX **output**
 
