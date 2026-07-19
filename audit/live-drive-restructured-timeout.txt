@@ -1,0 +1,16 @@
+[anon-live] author=qwen36-27b
+{"level":30,"time":1784457195146,"app":"simoneos","env":"development","error":{},"msg":"multimodal.not_available"}
+[anon-live] session=document-anonymizer-1784457195168 nonce=NX57195074
+{"level":30,"time":1784457195147,"app":"simoneos","env":"development","msg":"surrogate.auto_binding_disabled_no_owner_programs"}
+{"level":30,"time":1784457195147,"app":"simoneos","env":"development","provider":"mock","model":"qwen36-27b","msg":"llm.middleware_installed"}
+{"level":30,"time":1784457195159,"app":"simoneos","env":"development","port":0,"database":":memory:","sessionLogs":{"enabled":true,"rootDir":"/home/simone/document-anonymizer/session-logs"},"programs":["document-anonymizer"],"msg":"server.constructed"}
+[anon-live] mode=ingest
+[anon-live] uploaded fileId=4146cfd8-bb6d-4e4e-8a4f-7d41092a9922
+[anon-live] mode=detect_pii
+[anon-live] mode=anonymize
+[anon-live] mode=export_anonymized
+[anon-live] FATAL: PgasApiError: Round 5 exceeded liveness bound of 300000ms and was abandoned
+    at toApiError (/home/simone/document-anonymizer/node_modules/@simodelne/pgas-server/dist-bundle/client.mjs:24:10)
+    at PgasClient.request (/home/simone/document-anonymizer/node_modules/@simodelne/pgas-server/dist-bundle/client.mjs:124:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async main (/home/simone/document-anonymizer/live-drive-anon.ts:89:7)

@@ -85,10 +85,16 @@ async function main() {
 
   let final = await snapshot(client, sessionId);
   for (let i = 0; i < 16 && final.mode !== 'complete'; i += 1) {
-    await client.sessions.trigger(sessionId, { channel: 'user_text', payload: `continue ${String(i + 1)}` });
+    try {
+      await client.sessions.trigger(sessionId, { channel: 'user_text', payload: `continue ${String(i + 1)}` });
+    } catch (err) {
+      if (String((err as Error).message).toLowerCase().includes('terminal')) { process.stdout.write('[anon-live] session terminal (completed)\n'); break; }
+      throw err;
+    }
     final = await snapshot(client, sessionId);
     process.stdout.write(`[anon-live] mode=${final.mode}\n`);
   }
+  final = await snapshot(client, sessionId);
 
   const source = pickStage(final.domain, 'ingest') ?? {};
   const srcFull = typeof final.domain['inputs.source_document.full_text'] === 'string' ? final.domain['inputs.source_document.full_text'] as string : '';
