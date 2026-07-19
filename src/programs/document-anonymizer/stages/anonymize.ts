@@ -7,7 +7,22 @@ export async function runStage(input: StageInput, runtime: StageRuntime): Promis
   const format = typeof domain['inputs.source_document.extraction_kind'] === 'string' ? (domain['inputs.source_document.extraction_kind'] as string) : 'txt';
   let entities: Array<{ text: string; type: string }> = [];
   const typed = domain['detect_pii.result.entities'];
-  if (Array.isArray(typed)) { entities = typed as Array<{ text: string; type: string }>; }
+  if (Array.isArray(typed)) {
+    entities = typed as Array<{ text: string; type: string }>;
+  } else {
+    let obj: Record<string, unknown> | undefined;
+    const raw = domain['detect_pii.result_json'];
+    if (typeof raw === 'string') {
+      try { const parsed = JSON.parse(raw) as unknown; if (parsed && typeof parsed === 'object') obj = parsed as Record<string, unknown>; } catch (parseError) { void parseError; }
+    } else if (raw && typeof raw === 'object') {
+      obj = raw as Record<string, unknown>;
+    }
+    if (!obj) {
+      const res = domain['detect_pii.result'];
+      if (res && typeof res === 'object') obj = res as Record<string, unknown>;
+    }
+    if (obj && Array.isArray(obj['entities'])) entities = obj['entities'] as Array<{ text: string; type: string }>;
+  }
   const uniqueOrdered: Array<{ text: string; type: string }> = [];
   const seen = new Set<string>();
   for (const e of entities) {
