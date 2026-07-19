@@ -44,8 +44,12 @@ export async function extractPdfText(bytes: Uint8Array): Promise<ExtractPdfResul
   try {
     const pdfjs = await loadPdfjs();
     const getDocument = pdfjs.getDocument as GetDocument;
+    // pdfjs v4 rejects Node Buffer specifically ("provide Uint8Array, rather
+    // than Buffer"); copy into a plain Uint8Array so any caller is safe.
+    const data = new Uint8Array(bytes.length);
+    data.set(bytes);
     const doc = await getDocument({
-      data: bytes,
+      data,
       isEvalSupported: false,
       useSystemFonts: false,
       standardFontDataUrl: standardFontDataUrl(),
