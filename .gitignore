@@ -3,3 +3,4 @@ dist/
 *.log
 session-logs/
 .env
+package-lock.json

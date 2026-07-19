@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { createPgasClient, fetchTransport } from '@simodelne/pgas-server/client.js';
+
+const hasLiveProvider = Boolean(process.env.PGAS_LIVE_PROVIDER && process.env.PGAS_API_BASE && process.env.PGAS_API_TOKEN);
+const requireLive = process.env.PGAS_REQUIRE_LIVE === '1';
+const liveIt = hasLiveProvider || requireLive ? it : it.skip;
+// Real LLM round trips routinely take 10-60s. The default 5s vitest timeout would
+// flake every run, so the live gate uses an explicit upper bound.
+const LIVE_PROVIDER_TIMEOUT_MS = Number(process.env.PGAS_LIVE_PROVIDER_TIMEOUT_MS ?? '180000');
+
+describe('document-anonymizer live-provider graduation', () => {
+  liveIt('requires a real provider round trip through the external API', async () => {
+    if (!hasLiveProvider) {
+      throw new Error('PGAS_REQUIRE_LIVE=1 requires PGAS_LIVE_PROVIDER, PGAS_API_BASE, and PGAS_API_TOKEN');
+    }
+
+    const client = createPgasClient(fetchTransport({
+      baseUrl: process.env.PGAS_API_BASE!,
+      token: process.env.PGAS_API_TOKEN!,
+    }));
+
+    const session = await client.sessions.create({
+      program: 'document-anonymizer',
+      domain_context: {
+        query: `live provider graduation via ${process.env.PGAS_LIVE_PROVIDER}`,
+      },
+    });
+    const result = await client.sessions.trigger(session.sessionId, {
+      channel: 'user_text',
+      payload: 'confirm pgas-new live-provider graduation',
+    });
+    const envelope = await client.sessions.get(session.sessionId);
+    const rounds = await client.sessions.rounds(session.sessionId);
+    const resultPayload = JSON.stringify(result.result ?? result);
+
+    expect(result).toBeDefined();
+    expect(resultPayload.length).toBeGreaterThan(2);
+    expect(envelope.sessionId).toBe(session.sessionId);
+    expect(rounds.rounds.length).toBeGreaterThan(0);
+    expect(process.env.PGAS_LIVE_PROVIDER).toBeTruthy();
+  }, LIVE_PROVIDER_TIMEOUT_MS);
+
+  it('documents the live-provider graduation gate when env is absent', () => {
+    if (!hasLiveProvider) {
+      expect('PGAS_LIVE_PROVIDER, PGAS_API_BASE, and PGAS_API_TOKEN are required for graduation').toContain(
+        'PGAS_LIVE_PROVIDER',
+      );
+    }
+  });
+});

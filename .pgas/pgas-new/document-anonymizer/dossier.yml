@@ -1,0 +1,13 @@
+program:
+  slug: "document-anonymizer"
+  name: "Document Anonymizer"
+  runtime: typescript-node
+mandate: |-
+  Reversibly anonymize documents (DOCX/MD/TXT) with a mapping file for rebuilding the original.
+notebook:
+  purpose: "Durable intake notes and user ideas for Document Anonymizer."
+research:
+  user_confirmation_required: true
+graduation:
+  static_verification: pending
+  live_provider_round_trip: pending

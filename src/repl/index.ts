@@ -1,0 +1,432 @@
+import readline from 'node:readline';
+import chalk from 'chalk';
+import { connectNotifications, createPgasClient, fetchTransport } from '@simodelne/pgas-server/client.js';
+import type { ReplState } from './renderer.js';
+import { renderAction, renderError, renderInfo, renderModeChange, renderStep } from './renderer.js';
+
+const API_BASE = process.env.PGAS_API_BASE ?? 'http://localhost:3000';
+const WS_BASE =
+  process.env.PGAS_WS_BASE ?? API_BASE.replace(/^https/, 'wss').replace(/^http/, 'ws');
+const TOKEN = process.env.PGAS_CLI_TOKEN ?? 'dev-token';
+const DEV_MODE = process.env.PGAS_DEV_MODE !== '0';
+const PROGRAM = 'document-anonymizer';
+const NOTIFICATION_OPEN_TIMEOUT_MS = Number(process.env.PGAS_WS_OPEN_TIMEOUT_MS ?? '10000');
+
+if (!DEV_MODE && TOKEN === 'dev-token') {
+  process.stderr.write('PGAS_CLI_TOKEN must be set when PGAS_DEV_MODE=0\n');
+  process.exit(1);
+}
+
+const client = createPgasClient(fetchTransport({ baseUrl: API_BASE, token: TOKEN }));
+
+const state: ReplState = {
+  sessionId: null,
+  mode: null,
+  running: false,
+  abortRequested: false,
+};
+
+// Active spinner so /abort and shutdown() can stop it without unwinding the
+// SSE for-await loop manually.
+let activeSpinner: { update: (msg: string) => void; stop: () => void } | null = null;
+
+process.stdout.write(chalk.bold.cyan(`\n  Document Anonymizer — PGAS REPL\n\n`));
+
+function isAuthError(err: unknown): err is { status: number; body?: { error?: string } } {
+  const e = err as { status?: number } | undefined;
+  return typeof e?.status === 'number' && (e.status === 401 || e.status === 403);
+}
+
+try {
+  await client.programs.list();
+} catch (err) {
+  if (isAuthError(err)) {
+    const body = (err as { body?: { error?: string } }).body;
+    renderError(
+      `Authentication failed (HTTP ${String(err.status)}). ` +
+        `Check PGAS_CLI_TOKEN${body?.error ? `: ${body.error}` : '.'}`,
+    );
+  } else {
+    const errAny = err as { status?: number } | undefined;
+    if (errAny?.status && errAny.status >= 500) {
+      renderError(`Server error (HTTP ${String(errAny.status)}) at ${API_BASE}.`);
+    } else {
+      renderError(`Server not reachable at ${API_BASE}. Start it first: npm run dev`);
+    }
+  }
+  process.exit(1);
+}
+renderStep(`Connected  program: ${chalk.bold(PROGRAM)}`);
+
+const ws = connectNotifications(
+  { wsBaseUrl: WS_BASE, token: TOKEN, reconnect: true },
+  {
+    onMessage(event) {
+      if (!('type' in event)) return;
+      const ev = event as { type: string; sessionId: string; data: Record<string, unknown> };
+      if (ev.type === 'connected') return;
+
+      switch (ev.type) {
+        case 'mode_change': {
+          state.mode = String(ev.data.mode ?? '');
+          renderModeChange(state.mode);
+          updatePrompt();
+          break;
+        }
+        case 'session:pending_input': {
+          const widget = ev.data.normalizedWidget as { message?: string } | undefined;
+          if (!widget) break;
+          renderInfo(widget.message || 'Input requested — type your response.');
+          updatePrompt();
+          break;
+        }
+        case 'session_terminal':
+          renderStep('Complete.');
+          void shutdown(0);
+          break;
+        case 'error':
+          renderError(String(ev.data.message ?? JSON.stringify(ev.data)));
+          break;
+      }
+    },
+    onReconnect({ attempt }) {
+      renderError(`Connection lost — reconnecting (attempt ${String(attempt)})…`);
+    },
+  },
+);
+
+async function waitForNotifications(timeoutMs: number): Promise<void> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`WebSocket did not open within ${String(timeoutMs)}ms`)),
+      timeoutMs,
+    );
+  });
+  try {
+    await Promise.race([ws.opened, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+try {
+  await waitForNotifications(NOTIFICATION_OPEN_TIMEOUT_MS);
+} catch (err) {
+  if (isAuthError(err)) {
+    renderError(`Authentication failed. Check PGAS_CLI_TOKEN: ${errorMessage(err)}`);
+  } else {
+    renderError(`Notifications failed to open: ${errorMessage(err)}`);
+  }
+  process.exit(1);
+}
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+updatePrompt();
+
+// Commands that are always safe to run, including while a round is in flight.
+const ALWAYS_AVAILABLE_COMMANDS = new Set(['abort', 'status', 'history', 'help']);
+
+// Pending free text and unsafe commands typed while a round is in flight.
+// Drained after the active round completes so nothing the user types is lost.
+const pendingInputs: string[] = [];
+// inputBusy: a handler (any kind) is currently executing. Prevents two free-text
+// or two unsafe-command handlers running concurrently.
+let inputBusy = false;
+// textBusy: a free-text handler is in flight specifically. Required separately
+// because an always-available command (/status, /history, /help) running
+// concurrently must NOT clear inputBusy if a free-text handler is still
+// awaiting sessions.create() — otherwise a subsequent free-text input
+// bypasses the queue and starts a second create. See round-3 issue 9.
+let textBusy = false;
+
+function dispatchInput(input: string): Promise<void> {
+  const isText = !input.startsWith('/');
+  if (isText) textBusy = true;
+  inputBusy = true;
+  const handler = isText ? handleText(input) : handleCommand(input);
+  return handler
+    .catch((err) => renderError(String(err)))
+    .finally(() => {
+      if (isText) textBusy = false;
+      // Only clear inputBusy if no other handler is still in flight.
+      if (!textBusy) inputBusy = false;
+      if (!state.running && !textBusy) {
+        // Drain any input that arrived while the previous handler was running.
+        const next = pendingInputs.shift();
+        if (next !== undefined) {
+          void dispatchInput(next);
+        } else {
+          updatePrompt();
+        }
+      }
+    });
+}
+
+rl.on('line', (line: string) => {
+  const input = line.trim();
+  if (!input) {
+    rl.prompt();
+    return;
+  }
+  const cmd = input.startsWith('/') ? input.slice(1).split(' ')[0] : '';
+  const isAlwaysAvailable = !!cmd && ALWAYS_AVAILABLE_COMMANDS.has(cmd);
+  // Free text and unsafe commands queue while a round is in flight, while a
+  // free-text handler is still awaiting create-session, OR while the previous
+  // handler hasn't resolved. /abort, /status, /history, /help bypass the queue.
+  if ((state.running || textBusy || inputBusy) && !isAlwaysAvailable) {
+    pendingInputs.push(input);
+    return;
+  }
+  void dispatchInput(input);
+});
+
+function drainPendingAfterRound(): void {
+  if (state.running || inputBusy || textBusy) return;
+  const next = pendingInputs.shift();
+  if (next !== undefined) void dispatchInput(next);
+}
+
+let exiting = false;
+async function shutdown(exitCode = 0): Promise<void> {
+  if (exiting) return;
+  exiting = true;
+  if (state.sessionId && state.running) {
+    state.abortRequested = true;
+    await client.controls.invoke(PROGRAM, 'abort', { sessionId: state.sessionId, channel: 'http' }).catch(() => {});
+  }
+  if (activeSpinner) {
+    activeSpinner.stop();
+    activeSpinner = null;
+  }
+  process.stdout.write(chalk.dim('\n  Bye.\n'));
+  ws.close();
+  process.exit(exitCode);
+}
+
+// readline emits 'SIGINT' on its own when raw mode + Ctrl-C is pressed; it
+// suppresses the default 'SIGINT' on process, so we hook both paths.
+rl.on('SIGINT', () => {
+  void shutdown();
+});
+rl.on('close', () => {
+  void shutdown();
+});
+process.on('SIGINT', () => {
+  void shutdown();
+});
+
+function updatePrompt(): void {
+  const label = state.mode ? chalk.dim(` [${state.mode}]`) : '';
+  rl.setPrompt(chalk.cyan('› ') + label + (label ? ' ' : ''));
+  rl.prompt();
+}
+
+async function handleCommand(input: string): Promise<void> {
+  const cmd = input.slice(1).split(' ')[0] ?? '';
+  switch (cmd) {
+    case 'help':
+      renderInfo('/new  /abort  /status  /history  /resume  /help');
+      break;
+    case 'new':
+      state.sessionId = null;
+      state.mode = null;
+      renderStep('Ready — send a message to start a new session.');
+      break;
+    case 'abort':
+      if (state.sessionId) {
+        state.abortRequested = true;
+        if (activeSpinner) {
+          activeSpinner.stop();
+          activeSpinner = null;
+        }
+        try {
+          await client.controls.invoke(PROGRAM, 'abort', { sessionId: state.sessionId, channel: 'http' });
+          renderStep('Session aborted.');
+        } catch (err) {
+          renderError(`Abort failed: ${errorMessage(err)}`);
+        }
+        state.sessionId = null;
+        state.mode = null;
+        state.running = false;
+      } else {
+        renderInfo('No active session.');
+      }
+      break;
+    case 'status':
+      if (state.sessionId) {
+        try {
+          const env = (await client.sessions.get(state.sessionId)) as {
+            status?: string;
+            mode?: string;
+            roundCount?: number;
+            running?: boolean;
+          };
+          state.mode = env.mode ?? state.mode;
+          state.running = env.running === true;
+          renderInfo(
+            `session: ${state.sessionId}  status: ${String(env.status ?? 'unknown')}  ` +
+              `mode: ${String(env.mode ?? '?')}  running: ${String(env.running === true)}  rounds: ${String(env.roundCount ?? 0)}`,
+          );
+        } catch (err) {
+          renderError(`Status fetch failed: ${errorMessage(err)}`);
+        }
+      } else {
+        renderInfo('No active session.');
+      }
+      break;
+    case 'history':
+      if (!state.sessionId) {
+        try {
+          const list = await client.sessions.list({ program: PROGRAM, limit: 10 });
+          if (list.sessions.length === 0) {
+            renderInfo('No prior sessions.');
+          } else {
+            for (const row of list.sessions) {
+              renderInfo(`${row.sessionId}  ${row.status ?? '?'}  mode: ${row.mode ?? '?'}`);
+            }
+          }
+        } catch (err) {
+          renderError(`History fetch failed: ${errorMessage(err)}`);
+        }
+        break;
+      }
+      try {
+        const result = (await client.sessions.rounds(state.sessionId)) as {
+          rounds?: Array<{
+            number?: number;
+            trigger?: string | { channelId?: string };
+            result?: { name?: string };
+          }>;
+        };
+        const rounds = result.rounds ?? [];
+        if (rounds.length === 0) {
+          renderInfo('No rounds yet.');
+        } else {
+          for (const round of rounds) {
+            const trigger =
+              typeof round.trigger === 'string'
+                ? round.trigger
+                : round.trigger?.channelId ?? '?';
+            renderInfo(
+              `round ${String(round.number ?? '?')}  trigger: ${trigger}  ` +
+                `action: ${String(round.result?.name ?? '?')}`,
+            );
+          }
+        }
+      } catch (err) {
+        renderError(`History fetch failed: ${errorMessage(err)}`);
+      }
+      break;
+    case 'resume':
+      try {
+        const resume = (await client.sessions.resume()) as {
+          sessionId?: string;
+          mode?: string;
+        } | null;
+        if (resume?.sessionId) {
+          const env = await client.sessions.get(resume.sessionId);
+          const mode = env.mode ?? resume.mode ?? null;
+          state.sessionId = env.sessionId;
+          state.mode = mode;
+          state.running = env.running === true;
+          renderStep(`Resumed session ${env.sessionId} (mode: ${mode ?? '?'}).`);
+        } else {
+          renderInfo('No resumable session exists.');
+        }
+      } catch (err) {
+        renderError(`Resume failed: ${errorMessage(err)}`);
+      }
+      break;
+    default:
+      renderError(`Unknown command: /${cmd}`);
+  }
+}
+
+async function handleText(userText: string): Promise<void> {
+  if (!state.sessionId) {
+    const created = await client.sessions.create({
+      program: PROGRAM,
+      domain_context: { query: userText },
+    });
+    state.sessionId = created.sessionId;
+  }
+  await runTrigger(state.sessionId!, 'user_text', userText);
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.length > 0) return err.message;
+  if (typeof err === 'string' && err.length > 0) return err;
+  return String(err);
+}
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const STEP_LABELS: Record<string, string> = {
+  ingestion: 'reading context…',
+  projection: 'projecting state…',
+  authorship: 'drafting response…',
+  recognition: 'validating action…',
+  execution: 'applying action…',
+};
+
+function startSpinner(initial: string): { update: (msg: string) => void; stop: () => void } {
+  let label = initial;
+  let i = 0;
+  const draw = (): void => {
+    process.stdout.write('\r\x1b[K' + chalk.cyan(SPINNER_FRAMES[i % SPINNER_FRAMES.length]) + ' ' + chalk.dim(label));
+    i += 1;
+  };
+  draw();
+  const id = setInterval(draw, 100);
+  return {
+    update(msg: string): void {
+      label = msg;
+    },
+    stop(): void {
+      clearInterval(id);
+      process.stdout.write('\r\x1b[K');
+    },
+  };
+}
+
+async function runTrigger(sessionId: string, channel: string, payload: unknown): Promise<void> {
+  state.running = true;
+  state.abortRequested = false;
+  const s = startSpinner('Thinking…');
+  activeSpinner = s;
+
+  try {
+    const stream = client.sessions.triggerStream(sessionId, {
+      channel,
+      payload,
+    } as Parameters<typeof client.sessions.triggerStream>[1]);
+    for await (const event of stream) {
+      if (state.abortRequested) break;
+      if (event.event === 'step') {
+        const step = String((event.data as Record<string, unknown>).step ?? '');
+        s.update(STEP_LABELS[step] ?? step);
+      } else if (event.event === 'round_complete') {
+        s.stop();
+        const result = (event.data as Record<string, unknown>).result ?? event.data;
+        renderAction(result as { name: string; payload?: Record<string, unknown> });
+        state.running = false;
+        updatePrompt();
+      } else if (event.event === 'error') {
+        s.stop();
+        renderError(String((event.data as Record<string, unknown>).message ?? event.data));
+        state.running = false;
+        updatePrompt();
+      }
+    }
+  } catch (err) {
+    if (!state.abortRequested) {
+      s.stop();
+      renderError(String(err));
+    }
+  } finally {
+    state.running = false;
+    if (activeSpinner === s) activeSpinner = null;
+    // Drain anything the user typed during the round.
+    drainPendingAfterRound();
+  }
+}

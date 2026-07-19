@@ -1,0 +1,602 @@
+name: document-anonymizer
+termination: BoundedSession
+topology: CyclicTopology
+pure: true
+preamble: |-
+  Program: Document Anonymizer. Reversibly anonymize an uploaded document (docx, markdown, or plain text): extract the text, detect PII, replace each entity with a stable typed token, and produce the anonymized document in the same format plus a mapping file listing every substitution so the original can be rebuilt.
+
+  This spec was synthesized mechanically by pgas-new.
+initial: intake
+terminal:
+  - complete
+features:
+  - base
+  - runtime_control
+  - reactions
+channels:
+  user_text:
+    direction: In
+    sync: Async
+  system_mode_entry:
+    direction: In
+    sync: Async
+  widget_output:
+    direction: Out
+    sync: Async
+  stage_output:
+    direction: Out
+    sync: Sync
+  document_upload:
+    direction: In
+    sync: Async
+modes:
+  intake:
+    vocabulary:
+      - begin_work
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - system_mode_entry
+      - widget_output
+    transitions:
+      - target: ingest
+        guard:
+          kind: FieldTruthy
+          path: intake.started
+  ingest:
+    vocabulary:
+      - complete_ingest
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+      - request_documents
+      - ingest_documents
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+      - document_upload
+    transitions:
+      - target: detect_pii
+        guard:
+          kind: FieldTruthy
+          path: inputs.source_document_ready
+    preconditions:
+      request_documents:
+        - kind: FieldFalsy
+          path: inputs.document_intake.documents_requested
+        - kind: FieldFalsy
+          path: inputs.source_document_ready
+      ingest_documents:
+        - kind: FieldTruthy
+          path: decisions.documents_received
+        - kind: FieldFalsy
+          path: inputs.source_document_ready
+      complete_ingest:
+        - kind: FieldTruthy
+          path: inputs.source_document_ready
+  detect_pii:
+    vocabulary:
+      - complete_detect_pii
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+    transitions:
+      - target: anonymize
+        guard:
+          kind: FieldTruthy
+          path: detect_pii.ready
+  anonymize:
+    vocabulary:
+      - complete_anonymize
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+    transitions:
+      - target: export_document
+        guard:
+          kind: FieldTruthy
+          path: anonymize.ready
+  export_document:
+    vocabulary:
+      - complete_export_document
+      - record_user_note
+      - session_new
+      - session_abort_current
+      - session_status
+      - session_history
+      - session_resume
+      - session_help
+    channels:
+      - user_text
+      - widget_output
+      - stage_output
+    transitions:
+      - target: complete
+        guard:
+          kind: FieldTruthy
+          path: export_document.ready
+  complete:
+    vocabulary:
+      - session_status
+      - session_history
+      - session_help
+    channels:
+      - widget_output
+    transitions: []
+proceed_to:
+  begin_work: ingest
+  complete_ingest: detect_pii
+  complete_detect_pii: anonymize
+  complete_anonymize: export_document
+  complete_export_document: complete
+projection:
+  intake:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - intake.started
+    exclude: []
+  complete:
+    include:
+      - inputs.initial_user_text
+      - inputs.source_document_ready
+      - detect_pii.ready
+      - anonymize.ready
+      - export_document.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - export_document.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+    exclude: []
+  ingest:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - inputs.source_document_ready
+      - ingest.output
+      - inputs.document_intake
+      - inputs.document_intake.status
+      - inputs.document_intake.documents_requested
+      - inputs.document_intake.file_refs
+      - inputs.document_intake.file_refs.0
+      - inputs.document_intake.file_refs.0.fileId
+      - decisions.documents_received
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+    exclude: []
+  detect_pii:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - detect_pii.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+  anonymize:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - anonymize.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+  export_document:
+    include:
+      - inputs.user_text
+      - inputs.initial_user_text
+      - notebook.entries
+      - notebook.pins
+      - export_document.ready
+      - ingest.output
+      - detect_pii.result_json
+      - detect_pii.items_json
+      - anonymize.output
+      - export_document.output
+      - inputs.source_document
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind
+      - inputs.source_document_ready
+    exclude: []
+prompts:
+  intake: Capture the initial request for Document Anonymizer and start the work.
+  complete: Terminal mode after Document Anonymizer completion is confirmed.
+  ingest: |-
+    Perform the ingest stage for Document Anonymizer.
+    Call request_documents once to request the upload and wait for document_upload.
+    After uploaded file references arrive, call ingest_documents with no document-content arguments; the handler reads engine-injected request.documents content_text.
+    When inputs.source_document_ready is true, proceed through the normal transition action. If the user skipped optional documents, note the skipped source record and proceed.
+  detect_pii: |-
+    Perform the detect_pii stage for Document Anonymizer.
+    Author-provided domain spec for detect_pii is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}
+  anonymize: |-
+    Perform the anonymize stage for Document Anonymizer.
+    Author-provided domain spec for anonymize is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}
+  export_document: |-
+    Perform the export_document stage for Document Anonymizer.
+    Author-provided domain spec for export_document is normative; implement it exactly and do not infer alternate business logic.
+    {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}
+ingestion:
+  user_text:
+    - inputs.user_text
+  system_mode_entry:
+    - inputs.mode_entry
+  document_upload:
+    - inputs.document_intake
+action_map:
+  begin_work:
+    description: Start intake and advance exactly one hop to ingest.
+    mutations:
+      - op: MSet
+        path: intake.started
+        value: true
+    channel: widget_output
+  record_user_note:
+    description: Record a notebook note.
+    mutations:
+      - op: MAppend
+        path: notebook.entries
+        from_arg: note
+    channel: widget_output
+  session_new:
+    description: Control-plane new session command.
+    mutations: []
+    channel: widget_output
+  session_abort_current:
+    description: Control-plane abort current session command.
+    mutations: []
+    channel: widget_output
+  session_status:
+    description: Control-plane status command.
+    mutations: []
+    channel: widget_output
+  session_history:
+    description: Control-plane history command.
+    mutations: []
+    channel: widget_output
+  session_resume:
+    description: Control-plane resume command.
+    mutations: []
+    channel: widget_output
+  session_help:
+    description: Control-plane help command.
+    mutations: []
+    channel: widget_output
+  complete_ingest:
+    description: Run deterministic pure-compute wrapper for ingest and advance exactly one hop to detect_pii.
+    result_path: ingest.output
+    mutations:
+      - op: MSet
+        path: inputs.source_document_ready
+        value: true
+    channel: stage_output
+  complete_detect_pii:
+    description: 'Record runtime LLM reasoning output for detect_pii and advance exactly one hop to anonymize. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
+    arg_descriptions:
+      result_json: 'JSON string result for the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
+      items_json: 'JSON string array of item ids or summaries produced by the detect_pii LLM reasoning stage. Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}'
+    mutations:
+      - op: MSet
+        path: detect_pii.ready
+        value: true
+      - op: MSet
+        path: detect_pii.result_json
+        from_arg: result_json
+      - op: MSet
+        path: detect_pii.items_json
+        from_arg: items_json
+    channel: widget_output
+  complete_anonymize:
+    description: 'Run deterministic pure-compute wrapper for anonymize and advance exactly one hop to export_document. Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}'
+    result_path: anonymize.output
+    mutations:
+      - op: MSet
+        path: anonymize.ready
+        value: true
+    channel: stage_output
+  complete_export_document:
+    description: 'Run deterministic pure-compute wrapper for export_document and advance exactly one hop to complete. Author-provided domain spec for export_document: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}'
+    result_path: export_document.output
+    mutations:
+      - op: MSet
+        path: export_document.ready
+        value: true
+    channel: stage_output
+  request_documents:
+    description: Ask the user to upload source text or markdown documents and park until document_upload arrives.
+    mutations:
+      - op: MSet
+        path: inputs.document_intake.documents_requested
+        value: true
+    channel: widget_output
+    awaits_user_decision:
+      channel: document_upload
+      intent: request_file_upload
+  ingest_documents:
+    description: Read engine-injected uploaded documents and write extracted text; call with no document-content arguments.
+    mutations: []
+    channel: stage_output
+    result_path: inputs.source_document
+schema:
+  inputs.user_text: string
+  inputs.query_result.kind: string
+  inputs.query_result.value_json: object
+  inputs.query_meta.source_path: string
+  inputs.query_meta.source_channel: string
+  inputs.query_meta.continuation_round: number
+  inputs.query_meta.scope_redirect: string
+  inputs.query_meta.message: string
+  inputs.mode_entry: object
+  inputs.mode_entry.mode: string
+  inputs.mode_entry.from_mode: string
+  inputs.mode_entry.entry_round: number
+  governance.round_counter: number
+  notebook.entries: array
+  notebook.pins: array
+  inputs.initial_user_text: string
+  intake.started: boolean
+  inputs.source_document_ready: boolean
+  detect_pii.ready: boolean
+  anonymize.ready: boolean
+  export_document.ready: boolean
+  ingest.output: object
+  ingest.output.result_json: string
+  ingest.output.items_json: string
+  ingest.output.digest: string
+  detect_pii.result_json: string
+  detect_pii.items_json: string
+  anonymize.output: object
+  anonymize.output.result_json: string
+  anonymize.output.items_json: string
+  anonymize.output.digest: string
+  export_document.output: object
+  export_document.output.result_json: string
+  export_document.output.items_json: string
+  export_document.output.digest: string
+  inputs.document_intake: object
+  inputs.document_intake.file_refs: array
+  inputs.document_intake.file_refs.*: object
+  inputs.document_intake.file_refs.*.fileId: string
+  inputs.document_intake.file_refs.*.name: string
+  inputs.document_intake.file_refs.*.mimeType: string
+  inputs.document_intake.file_refs.*.size: number
+  inputs.document_intake.documents: array
+  inputs.document_intake.status: string
+  inputs.document_intake.source: string
+  inputs.document_intake.completed: boolean
+  inputs.document_intake.documents_requested: boolean
+  decisions.documents_received: boolean
+  inputs.source_document: object
+  inputs.source_document.full_text: string
+  inputs.source_document.char_count: number
+  inputs.source_document.file_count: number
+  inputs.source_document.files_json: string
+  inputs.source_document.extraction_kind: string
+  inputs.source_document.status: string
+  inputs.source_document.reason: string
+repair_bound: 2
+fallback:
+  channel: widget_output
+  payload:
+    ok: false
+guidance:
+  ingest:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - Call request_documents once to request the upload and wait for document_upload.
+    - After uploaded file references arrive, call ingest_documents with no document-content arguments; the handler reads engine-injected request.documents content_text.
+    - When inputs.source_document_ready is true, proceed through the normal transition action. If the user skipped optional documents, note the skipped source record and proceed.
+  detect_pii:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - 'Author-provided domain spec for detect_pii: {"reads":["inputs.source_document.full_text"],"produces":{"result_json":{"entities":"array","entity_count":"number","summary":"string"},"items_json":["entity:<summary>"]},"rules":["Identify every PII entity in the document text and classify each as PERSON, EMAIL, PHONE, ADDRESS, ORG, ID, or DATE. Return them in the entities array, each with a verbatim text span and a type."],"invariants":["each entity has a verbatim text span and a type; entity_count equals the number of entities."]}.'
+    - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+  anonymize:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - 'Author-provided domain spec for anonymize: {"reads":["inputs.source_document.full_text","detect_pii.result_json"],"produces":{"result_json":{"stage":"string","output_text":"string","format":"string","mapping":"array","entity_count":"number"},"items_json":["token:<token>"]},"rules":["Assign one stable typed token per unique original PII string; replace all occurrences deterministically; build a complete invertible mapping."],"invariants":["Applying the mapping backward over output_text reproduces the original text exactly."]}.'
+    - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+  export_document:
+    - Use the synthesized JSON-string scalar fields for structured handler results.
+    - 'delegation intake captured for this program: {"stages":{"detect_pii":{"archetype":"llm-reasoning"}}}.'
+    - 'Author-provided domain spec for export_document: {"reads":["anonymize.output.result_json"],"produces":{"result_json":{"stage":"string","docx_base64":"string","docx_bytes":"number","sha256":"string","section_count":"number"},"items_json":["docx_export:<sha256>"]},"rules":["Render the anonymized output_text into a deterministic DOCX export."],"invariants":["Do not call an LLM or provider while rendering export bytes."]}.'
+    - Domain spec rules and invariants are mandatory; do not substitute guessed defaults.
+control_plane:
+  version: 1
+  session:
+    program: document-anonymizer
+    binding: identity_channel_program
+    concurrency:
+      policy: single_active
+      on_busy: reject_with_status
+  free_text:
+    control: ask
+    bind:
+      query: $text
+  controls:
+    ask:
+      title: Ask
+      aliases:
+        - /ask
+      args:
+        query:
+          type: string
+          required: true
+          capture: rest
+      dispatch:
+        - op: create_session
+          as: session
+          program: document-anonymizer
+          domain_context:
+            query: $args.query
+        - op: trigger
+          session: $session.id
+          channel: user_text
+          payload: $args.query
+          mode: async
+    abort:
+      title: Abort run
+      aliases:
+        - /abort
+        - /stop
+      availability:
+        when: active_session.running
+      dispatch:
+        - op: abort_session
+          session: $active_session.id
+      presentation:
+        priority: destructive
+        confirm: true
+    new:
+      title: New session
+      aliases:
+        - /new
+        - /reset
+        - /restart
+      dispatch:
+        - op: create_session
+          as: session
+          program: document-anonymizer
+      presentation:
+        priority: secondary
+    history:
+      title: Recent sessions
+      aliases:
+        - /history
+        - /recent
+      dispatch:
+        - op: list_sessions
+          as: sessions
+      presentation:
+        priority: secondary
+    status:
+      title: Status
+      aliases:
+        - /status
+      availability:
+        when: active_session
+      dispatch:
+        - op: render_session
+          session: $active_session.id
+          view: status
+      presentation:
+        priority: contextual
+    resume:
+      title: Resume
+      aliases:
+        - /resume
+      availability:
+        when: active_session
+      dispatch:
+        - op: send_runtime_control
+          session: $active_session.id
+          control: resume
+      presentation:
+        priority: contextual
+    help:
+      title: Help
+      aliases:
+        - /help
+      dispatch:
+        - op: render_help
+      presentation:
+        priority: secondary
+reactions:
+  capture_initial_entry_input:
+    event: AfterIngestion
+    watch:
+      - inputs.user_text
+    write_scope:
+      - inputs.initial_user_text
+  save_document_intake:
+    event: AfterIngestion
+    watch:
+      - inputs.document_intake
+      - inputs.document_intake.file_refs
+      - inputs.document_intake.file_refs.0
+      - inputs.document_intake.file_refs.0.fileId
+      - inputs.document_intake.status
+    write_scope:
+      - decisions.documents_received
+  settle_document_source:
+    event: AfterRound
+    watch: []
+    write_scope:
+      - inputs.source_document_ready
+      - inputs.source_document.status
+      - inputs.source_document.full_text
+      - inputs.source_document.char_count
+      - inputs.source_document.file_count
+      - inputs.source_document.files_json
+      - inputs.source_document.extraction_kind

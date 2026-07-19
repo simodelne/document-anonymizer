@@ -1,0 +1,9 @@
+{
+  "program": {
+    "slug": "document-anonymizer",
+    "name": "Document Anonymizer"
+  },
+  "generated_by": "pgas-new",
+  "pgas_server_version": "3.21.0",
+  "artifacts_are_primary_objects": true
+}

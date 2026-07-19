@@ -1,0 +1,90 @@
+import chalk from 'chalk';
+
+export interface ReplState {
+  sessionId: string | null;
+  mode: string | null;
+  running: boolean;
+  // True between /abort being typed and the in-flight SSE stream noticing it.
+  // The for-await loop breaks on this; the spinner stops; runTrigger skips its
+  // error rendering for the aborted run so the user sees only "Session aborted."
+  abortRequested: boolean;
+}
+
+export interface ActionResult {
+  name: string;
+  channel?: string;
+  payload?: Record<string, unknown>;
+}
+
+function writeln(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
+function box(title: string, lines: string[]): void {
+  const inner = Math.max(title.length + 2, ...lines.map((l) => stripAnsi(l).length)) + 2;
+  const top = '┌─ ' + chalk.bold(title) + ' ' + '─'.repeat(Math.max(0, inner - title.length - 4)) + '┐';
+  writeln(chalk.dim(top));
+  for (const line of lines) {
+    const visible = stripAnsi(line).length;
+    const pad = ' '.repeat(Math.max(0, inner - visible - 2));
+    writeln(chalk.dim('│ ') + line + pad + chalk.dim(' │'));
+  }
+  writeln(chalk.dim('└' + '─'.repeat(inner) + '┘'));
+}
+
+function stripAnsi(s: string): string {
+  // Simple ANSI strip — matches chalk's CSI sequences
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+export function renderAction(result: ActionResult): void {
+  const { name, payload = {} } = result;
+  const title = name.replace(/_/g, ' ');
+
+  if (name === '__fallback__') {
+    writeln(chalk.yellow('⚠  No valid action — try rephrasing or /abort.'));
+    return;
+  }
+
+  // Array payload — e.g. proposed outline sections
+  const firstArr = Object.values(payload).find((v) => Array.isArray(v));
+  if (Array.isArray(firstArr)) {
+    const lines = (firstArr as Array<Record<string, unknown>>).map(
+      (item, i) =>
+        `${chalk.dim(String(i + 1).padStart(2) + '.')} ${String(item.title ?? item.name ?? JSON.stringify(item))}`,
+    );
+    box(title, lines);
+    return;
+  }
+
+  // Single message string
+  if (typeof payload.message === 'string') {
+    writeln(chalk.green('✓ ') + payload.message);
+    return;
+  }
+
+  // Generic key/value table
+  const entries = Object.entries(payload).filter(([, v]) => v !== null && v !== undefined && v !== '');
+  if (entries.length === 0) return;
+  const keyWidth = Math.max(...entries.map(([k]) => k.length));
+  const lines = entries.map(
+    ([k, v]) => `${chalk.cyan(k.padEnd(keyWidth))}  ${String(v).slice(0, 80)}`,
+  );
+  box(title, lines);
+}
+
+export function renderModeChange(newMode: string): void {
+  writeln(chalk.cyan(`→ ${newMode}`));
+}
+
+export function renderError(message: string): void {
+  writeln(chalk.red(`✗ ${message}`));
+}
+
+export function renderInfo(message: string): void {
+  writeln(chalk.blue('ℹ ') + message);
+}
+
+export function renderStep(message: string): void {
+  writeln(chalk.green('● ') + message);
+}
