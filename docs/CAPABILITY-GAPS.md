@@ -22,3 +22,13 @@ Scanned / image-only PDFs (OCR) are permanently out of scope.
 Output DOCX is a clean re-render of the anonymized text (`export_docx_plain`);
 original styling/layout/images are not preserved (in-place OOXML editing is
 host-side). PDF output would likewise require a host renderer.
+
+## Live-run note: round timeout
+
+At the deterministic DOCX export round, a verbose provider (e.g. qwen36-27b) may
+try to author the export payload itself, producing large responses that can
+exceed the default 300 s round liveness bound. For live runs set
+`PGAS_ROUND_TIMEOUT_MS=600000` (the export body is deterministic; the extra time
+only absorbs provider verbosity). Verified: with this set, the program drives
+end-to-end to `complete` with `anonymize_engaged=true` (byte-exact reversibility,
+9 PII entities, nonce removed from output and present in the mapping).

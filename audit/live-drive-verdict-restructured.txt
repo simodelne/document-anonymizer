@@ -1,0 +1,58 @@
+[wait] running=0.0 waiting=0.0 (t=30s)
+[wait] IDLE — starting drive (round bound 600s)
+[anon-live] author=qwen36-27b
+{"level":30,"time":1784459001828,"app":"simoneos","env":"development","error":{},"msg":"multimodal.not_available"}
+[anon-live] session=document-anonymizer-1784459001851 nonce=NX59001763
+{"level":30,"time":1784459001829,"app":"simoneos","env":"development","msg":"surrogate.auto_binding_disabled_no_owner_programs"}
+{"level":30,"time":1784459001829,"app":"simoneos","env":"development","provider":"mock","model":"qwen36-27b","msg":"llm.middleware_installed"}
+{"level":30,"time":1784459001841,"app":"simoneos","env":"development","port":0,"database":":memory:","sessionLogs":{"enabled":true,"rootDir":"/home/simone/document-anonymizer/session-logs"},"programs":["document-anonymizer"],"msg":"server.constructed"}
+[anon-live] mode=ingest
+[anon-live] uploaded fileId=3610607f-9f70-4beb-9357-23baf356470a
+[anon-live] mode=detect_pii
+[anon-live] mode=anonymize
+[anon-live] mode=finalize
+[anon-live] mode=complete
+
+=== DOCUMENT-ANONYMIZER LIVE-DRIVE VERDICT ===
+final_mode=complete
+source_full_text_len=328 output_text_len=238 mapping_entries=9
+nonce_in_original=true nonce_in_output=false nonce_in_mapping=true reverse_byte_exact=true
+anonymize_engaged=true
+--- sample mapping (first 4) ---
+[
+  {
+    "token": "[PERSON_1]",
+    "original": "Alice Johnson",
+    "type": "PERSON",
+    "occurrences": 2
+  },
+  {
+    "token": "[EMAIL_1]",
+    "original": "alice.johnson.NX59001763@example.com",
+    "type": "EMAIL",
+    "occurrences": 1
+  },
+  {
+    "token": "[PHONE_1]",
+    "original": "+1-202-555-0173",
+    "type": "PHONE",
+    "occurrences": 1
+  },
+  {
+    "token": "[PERSON_2]",
+    "original": "Bob Smith",
+    "type": "PERSON",
+    "occurrences": 2
+  }
+]
+--- output_text (first 240) ---
+CONFIDENTIAL MEMO
+
+From: [PERSON_1] ([EMAIL_1]), phone [PHONE_1].
+To: [PERSON_2] at [ORG_1], [ADDRESS_1].
+Re: settlement for client [PERSON_3], case reference [ID_1].
+
+[PERSON_1] will follow up with [PERSON_2] [DATE_1]. [ORG_1] confirmed.
+{"level":30,"time":1784459229827,"app":"simoneos","env":"development","msg":"shutdown.drain_start"}
+{"level":30,"time":1784459229831,"app":"simoneos","env":"development","msg":"shutdown.clean"}
+DRIVE_EXIT=0
