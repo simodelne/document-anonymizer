@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Document Anonymizer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1c2520;
+        --muted: #5f6d66;
+        --line: #cfd8d3;
+        --surface: #f7f8f5;
+        --panel: #ffffff;
+        --accent: #0f766e;
+        --accent-strong: #0b5d57;
+        --warn: #b45309;
+        --bad: #b42318;
+        --good: #16713d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--surface);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      main,
+      .mast {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+      }
+
+      .mast {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 76px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+
+      .provider {
+        color: var(--muted);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 24px;
+        padding: 28px 0 40px;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .section-head,
+      .section-body {
+        padding: 18px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 640;
+      }
+
+      input[type="file"],
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--ink);
+        font: inherit;
+      }
+
+      input[type="file"] {
+        min-height: 42px;
+        padding: 8px;
+      }
+
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+        padding: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      button {
+        min-height: 42px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        padding: 0 14px;
+        background: var(--accent);
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .secondary {
+        border-color: var(--line);
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      .secondary:hover {
+        background: #edf3f0;
+      }
+
+      .status {
+        min-height: 24px;
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status[data-tone="error"] {
+        color: var(--bad);
+      }
+
+      .status[data-tone="success"] {
+        color: var(--good);
+      }
+
+      .status[data-tone="busy"]::before {
+        content: "";
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 8px;
+        border: 2px solid #b8c7c1;
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: -1px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .results {
+        display: none;
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .results[data-visible="true"] {
+        display: grid;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .output-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #eef3f0;
+        color: #31423b;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      td:first-child {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: nowrap;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .two-field {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 0.5fr);
+        gap: 12px;
+        align-items: start;
+      }
+
+      @media (max-width: 760px) {
+        .mast {
+          align-items: flex-start;
+          flex-direction: column;
+          justify-content: center;
+          min-height: 92px;
+        }
+
+        .provider {
+          white-space: normal;
+        }
+
+        form,
+        .two-field {
+          grid-template-columns: 1fr;
+        }
+
+        button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="mast">
+        <h1>Document Anonymizer</h1>
+        <div class="provider">qwen36-27b via local vLLM</div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="section-head">
+          <h2>Anonymize</h2>
+        </div>
+        <div class="section-body">
+          <form id="anonymize-form">
+            <label>
+              Source document
+              <input id="anonymize-file" name="file" type="file" accept=".docx,.md,.markdown,.txt,.pdf" required>
+            </label>
+            <button id="anonymize-submit" type="submit">Anonymize</button>
+          </form>
+          <div id="anonymize-status" class="status" aria-live="polite"></div>
+          <div id="anonymize-results" class="results">
+            <div class="toolbar">
+              <button id="download-anonymized" class="secondary" type="button">Download Anonymized</button>
+              <button id="download-mapping" class="secondary" type="button">Download Mapping</button>
+            </div>
+            <div class="output-grid">
+              <label>
+                Anonymized text
+                <textarea id="anonymized-output" readonly></textarea>
+              </label>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Type</th>
+                      <th>Original</th>
+                      <th>Occurrences</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mapping-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Rehydrate</h2>
+        </div>
+        <div class="section-body">
+          <form id="rehydrate-form">
+            <div class="two-field">
+              <label>
+                Anonymized document
+                <input id="rehydrate-file" name="file" type="file" accept=".docx,.md,.markdown,.txt,.pdf" required>
+              </label>
+              <label>
+                Mapping file
+                <input id="mapping-file" name="mapping_file" type="file" accept=".json,application/json">
+              </label>
+            </div>
+            <label>
+              Mapping JSON
+              <textarea id="mapping-json" name="mapping" spellcheck="false"></textarea>
+            </label>
+            <button id="rehydrate-submit" type="submit">Rehydrate</button>
+          </form>
+          <div id="rehydrate-status" class="status" aria-live="polite"></div>
+          <div id="rehydrate-results" class="results">
+            <div class="toolbar">
+              <button id="download-restored" class="secondary" type="button">Download Restored</button>
+            </div>
+            <label>
+              Restored text
+              <textarea id="restored-output" readonly></textarea>
+            </label>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const anonymizeForm = document.getElementById('anonymize-form');
+      const anonymizeFile = document.getElementById('anonymize-file');
+      const anonymizeSubmit = document.getElementById('anonymize-submit');
+      const anonymizeStatus = document.getElementById('anonymize-status');
+      const anonymizeResults = document.getElementById('anonymize-results');
+      const anonymizedOutput = document.getElementById('anonymized-output');
+      const mappingBody = document.getElementById('mapping-body');
+      const downloadAnonymized = document.getElementById('download-anonymized');
+      const downloadMapping = document.getElementById('download-mapping');
+      const rehydrateForm = document.getElementById('rehydrate-form');
+      const rehydrateFile = document.getElementById('rehydrate-file');
+      const mappingFile = document.getElementById('mapping-file');
+      const mappingJson = document.getElementById('mapping-json');
+      const rehydrateSubmit = document.getElementById('rehydrate-submit');
+      const rehydrateStatus = document.getElementById('rehydrate-status');
+      const rehydrateResults = document.getElementById('rehydrate-results');
+      const restoredOutput = document.getElementById('restored-output');
+      const downloadRestored = document.getElementById('download-restored');
+
+      let lastAnonymize = null;
+      let lastRehydrate = null;
+
+      anonymizeForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const file = anonymizeFile.files && anonymizeFile.files[0];
+        if (!file) {
+          setStatus(anonymizeStatus, 'Choose a document.', 'error');
+          return;
+        }
+        anonymizeSubmit.disabled = true;
+        anonymizeResults.dataset.visible = 'false';
+        setStatus(anonymizeStatus, 'Running anonymization...', 'busy');
+        try {
+          const form = new FormData();
+          form.append('file', file, file.name);
+          const result = await postJson('/api/anonymize', form);
+          lastAnonymize = result;
+          anonymizedOutput.value = result.output_text || '';
+          mappingJson.value = JSON.stringify(result.mapping || [], null, 2);
+          renderMapping(result.mapping || []);
+          anonymizeResults.dataset.visible = 'true';
+          setStatus(anonymizeStatus, `Complete. Mapping entries: ${(result.mapping || []).length}.`, 'success');
+        } catch (error) {
+          setStatus(anonymizeStatus, error.message || String(error), 'error');
+        } finally {
+          anonymizeSubmit.disabled = false;
+        }
+      });
+
+      mappingFile.addEventListener('change', async () => {
+        const file = mappingFile.files && mappingFile.files[0];
+        if (!file) {
+          return;
+        }
+        mappingJson.value = await file.text();
+      });
+
+      rehydrateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const file = rehydrateFile.files && rehydrateFile.files[0];
+        if (!file) {
+          setStatus(rehydrateStatus, 'Choose an anonymized document.', 'error');
+          return;
+        }
+        rehydrateSubmit.disabled = true;
+        rehydrateResults.dataset.visible = 'false';
+        setStatus(rehydrateStatus, 'Running rehydrate...', 'busy');
+        try {
+          const form = new FormData();
+          form.append('file', file, file.name);
+          form.append('mapping', mappingJson.value);
+          const uploadedMapping = mappingFile.files && mappingFile.files[0];
+          if (uploadedMapping) {
+            form.append('mapping_file', uploadedMapping, uploadedMapping.name);
+          }
+          const result = await postJson('/api/rehydrate', form);
+          lastRehydrate = result;
+          restoredOutput.value = result.output_text || '';
+          rehydrateResults.dataset.visible = 'true';
+          setStatus(rehydrateStatus, `Complete. Restored entries: ${result.restored_count || 0}.`, 'success');
+        } catch (error) {
+          setStatus(rehydrateStatus, error.message || String(error), 'error');
+        } finally {
+          rehydrateSubmit.disabled = false;
+        }
+      });
+
+      downloadAnonymized.addEventListener('click', () => {
+        if (!lastAnonymize) return;
+        downloadArtifact(
+          lastAnonymize.download_name || 'anonymized.txt',
+          lastAnonymize.output_text || '',
+          lastAnonymize.docx_base64,
+        );
+      });
+
+      downloadMapping.addEventListener('click', () => {
+        if (!lastAnonymize) return;
+        downloadText('mapping.json', JSON.stringify(lastAnonymize.mapping || [], null, 2), 'application/json');
+      });
+
+      downloadRestored.addEventListener('click', () => {
+        if (!lastRehydrate) return;
+        downloadArtifact(
+          lastRehydrate.download_name || 'restored.txt',
+          lastRehydrate.output_text || '',
+          lastRehydrate.docx_base64,
+        );
+      });
+
+      async function postJson(url, form) {
+        const response = await fetch(url, { method: 'POST', body: form });
+        const text = await response.text();
+        let payload;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          throw new Error(text || `HTTP ${response.status}`);
+        }
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        return payload;
+      }
+
+      function renderMapping(mapping) {
+        mappingBody.textContent = '';
+        for (const entry of mapping) {
+          const row = document.createElement('tr');
+          for (const value of [entry.token, entry.type, entry.original, entry.occurrences]) {
+            const cell = document.createElement('td');
+            cell.textContent = value == null ? '' : String(value);
+            row.appendChild(cell);
+          }
+          mappingBody.appendChild(row);
+        }
+      }
+
+      function setStatus(target, message, tone) {
+        target.textContent = message;
+        target.dataset.tone = tone || '';
+      }
+
+      function downloadArtifact(filename, text, docxBase64) {
+        if (docxBase64 && filename.toLowerCase().endsWith('.docx')) {
+          downloadBytes(filename, base64ToBytes(docxBase64), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          return;
+        }
+        downloadText(filename, text, 'text/plain;charset=utf-8');
+      }
+
+      function downloadText(filename, text, type) {
+        downloadBytes(filename, new TextEncoder().encode(text), type);
+      }
+
+      function downloadBytes(filename, bytes, type) {
+        const url = URL.createObjectURL(new Blob([bytes], { type }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function base64ToBytes(value) {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+      }
+    </script>
+  </body>
+</html>
