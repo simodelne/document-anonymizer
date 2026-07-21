@@ -54,8 +54,7 @@ describe('hermetic PDF upload through the engine route', () => {
       await client.sessions.trigger(sessionId, { channel: 'user_text', payload: 'start' });
       await client.sessions.trigger(sessionId, { channel: 'user_text', payload: 'request upload' });
       const form = new FormData();
-      const pdfBytes = makePdf(['Patient Dana Wells', `email dana.${nonce}@example.com`, `case CASE-${nonce}`]) as Uint8Array<ArrayBuffer>;
-      const file = new File([pdfBytes], 'intake.pdf', { type: 'application/pdf' });
+      const file = new File([makePdf(['Patient Dana Wells', `email dana.${nonce}@example.com`, `case CASE-${nonce}`])], 'intake.pdf', { type: 'application/pdf' });
       form.append('files', file as unknown as Blob, file.name);
       const upload = await client.files.upload(sessionId, form) as { files?: Array<{ fileId: string; name: string }> };
       const ref = (upload.files ?? [])[0];
