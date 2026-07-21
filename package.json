@@ -8,7 +8,7 @@
     "frontend": "node --import tsx frontend/server.ts",
     "repl": "node --import tsx src/repl/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run tests"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
