@@ -1,0 +1,24 @@
+[wait] running=3.0 waiting=0.0 (t=30s)
+[wait] running=4.0 waiting=1.0 (t=60s)
+[wait] running=4.0 waiting=0.0 (t=90s)
+[wait] running=4.0 waiting=0.0 (t=120s)
+[wait] running=4.0 waiting=1.0 (t=150s)
+[wait] running=5.0 waiting=0.0 (t=180s)
+[wait] running=4.0 waiting=1.0 (t=210s)
+[wait] running=4.0 waiting=0.0 (t=240s)
+[wait] running=2.0 waiting=0.0 (t=270s)
+[wait] running=3.0 waiting=0.0 (t=300s)
+[wait] running=3.0 waiting=0.0 (t=330s)
+[wait] running=2.0 waiting=0.0 (t=360s)
+[wait] running=2.0 waiting=0.0 (t=390s)
+[wait] running=1.0 waiting=0.0 (t=420s)
+[wait] running=1.0 waiting=0.0 (t=450s)
+[wait] running=0.0 waiting=0.0 (t=480s)
+[wait] IDLE — running frontend E2E
+FRONTEND E2E PASS
+home_status=200 contains_upload_form=true
+vllm_num_requests_running_before_drive=0
+txt_nonce=TXTE2EMRT5CC6OU4H563 final_mode=finalize output_has_nonce=false mapping_entries=5 mapping_has_nonce=true reverse_byte_exact=true
+pdf_nonce=PDFE2EMRT5E8ABGUBUCE final_mode=finalize format=pdf_pdfjs source_len=141 output_has_nonce=false mapping_entries=4 mapping_has_nonce=true reverse_extracted_text_exact=true
+rehydrate_final_mode=export_restored rehydrate_restored_count=5 restored_len=189 restored_equals_original=true
+E2E_EXIT=0

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --import tsx src/server.ts",
+    "frontend": "node --import tsx frontend/server.ts",
     "repl": "node --import tsx src/repl/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -34,10 +34,27 @@ npm install
 npm run typecheck   # tsc --noEmit
 npm test            # vitest (hermetic; excludes the live-provider gate)
 npm run dev         # boot the PGAS server
+npm run frontend    # boot the web UI on http://localhost:5178
 npm run repl        # interactive REPL
 ```
 
 Requires Node 18+ (uses `node:zlib`, `FormData`/`File`). Engine: `@simodelne/pgas-server@^3.21.0`.
+
+### Web frontend
+
+Run:
+
+```bash
+npm run frontend
+```
+
+Open:
+
+```text
+http://localhost:5178
+```
+
+The frontend server prints `document-anonymizer frontend on http://localhost:5178` after startup. It expects an OpenAI-compatible vLLM server at `http://localhost:8000/v1` for live anonymize and rehydrate runs.
 
 ### Live run against a real provider
 
