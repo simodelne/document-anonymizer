@@ -33,6 +33,7 @@ interface DriveResult {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const htmlPath = join(__dirname, 'index.html');
 const port = Number(process.env.PORT ?? '5178');
+const requestTimeoutMs = Number(process.env.FRONTEND_REQUEST_TIMEOUT_MS ?? '900000');
 const uploadsRoot = mkdtempSync(join(tmpdir(), 'document-anonymizer-frontend-'));
 const uploadsDir = join(uploadsRoot, 'uploads');
 
@@ -65,6 +66,8 @@ const httpServer = createServer((req, res) => {
     });
   });
 });
+httpServer.requestTimeout = requestTimeoutMs;
+httpServer.headersTimeout = Math.min(60_000, requestTimeoutMs);
 
 httpServer.listen(port, '0.0.0.0', () => {
   process.stdout.write(`document-anonymizer frontend on http://localhost:${port}\n`);
