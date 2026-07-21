@@ -6,7 +6,7 @@ Anonymization is **reversible and deterministic**: applying the mapping backward
 
 ## What it does
 
-- **Input:** DOCX, Markdown, or plain text (PDF is a declared host-connector gap — see below).
+- **Input:** DOCX, Markdown, plain text, or **PDF** (PDF via a portable pure-JS host connector — see Capability gaps).
 - **Detect:** an LLM stage identifies PII entities — `PERSON`, `EMAIL`, `PHONE`, `ADDRESS`, `ORG`, `ID`, `DATE`.
 - **Anonymize:** a deterministic stage assigns one stable typed token per unique original (`[PERSON_1]`, `[EMAIL_2]`, …; the same entity → the same token everywhere) and builds a complete, invertible mapping `[{ token, original, type, occurrences }]`.
 - **Output:** the anonymized document in the **same format** (DOCX re-rendered via OOXML; MD/TXT directly) **plus** the mapping as a first-class artifact.
@@ -59,7 +59,7 @@ Live-proven end-to-end on qwen36-27b (`anonymize_engaged=true`: PII removed from
 
 Honest scope — see [`docs/CAPABILITY-GAPS.md`](docs/CAPABILITY-GAPS.md):
 
-- **PDF input/output** is a declared **host-connector gap**. General PDF text extraction needs host-side font/CMap handling the foundry doesn't synthesize; a typed seam is provided at [`src/programs/document-anonymizer/extract/pdf-connector.ts`](src/programs/document-anonymizer/extract/pdf-connector.ts) (`DocumentExtractionHostConnector`). DOCX/MD/TXT work out of the box. Scanned/OCR PDFs are out of scope.
+- **PDF input is wired** via a host connector at [`src/programs/document-anonymizer/extract/pdf.ts`](src/programs/document-anonymizer/extract/pdf.ts) (`extractPdfText`, backed by `pdfjs-dist` — portable pure-JS, no system binary). Swap the backend by replacing that function. Scanned/OCR PDFs are out of scope (refused with a clear reason). **PDF output** would still require a host renderer (not implemented).
 - **DOCX output** is a clean re-render of the anonymized text — original styling/layout/images are not preserved (in-place OOXML editing is host-side).
 - **Rehydrate** (v1) reads the mapping from the request payload.
 - **Live-run note:** at the deterministic DOCX export round a verbose provider may over-generate; set `PGAS_ROUND_TIMEOUT_MS=600000` so the round finishes.

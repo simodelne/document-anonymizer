@@ -2,6 +2,7 @@ import type { ToolHandler } from '@simodelne/pgas-server/plugin.js';
 import { resolveDomainValue, type HandlerPayload } from './_resolver.js';
 import { createStageRuntime, normalizeStageOutput, resolveStageInput } from '../contracts.js';
 import { extractDocxText } from '../extract/docx.js';
+import { extractPdfText } from '../extract/pdf.js';
 import { runStage as runIngest } from '../stages/ingest.js';
 import { runStage as runAnonymize } from '../stages/anonymize.js';
 import { runStage as runExportAnonymized } from '../stages/export_anonymized.js';
@@ -160,14 +161,14 @@ export const handlers: Record<string, ToolHandler> = {
   },
 };
 
-function ingestUploadedDocuments(payload: HandlerPayload): Record<string, unknown> {
+async function ingestUploadedDocuments(payload: HandlerPayload): Promise<Record<string, unknown>> {
   if (documentSkipRequestedPayload(payload)) {
     return skippedDocumentSource();
   }
   const request = payload.request as { documents?: unknown } | undefined;
   const rawDocuments = Array.isArray(request?.documents) ? request.documents : [];
   const documentRecords = rawDocuments.filter(isDocumentRecord);
-  const allowedMimeTypes = new Set<string>(["text/plain","text/markdown","application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+  const allowedMimeTypes = new Set<string>(["text/plain","text/markdown","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/pdf"]);
   const summaries = documentRecords.map(documentSummary);
   const eligible: Array<{ document: Record<string, unknown>; text: string; extraction_kind: string }> = [];
   for (const document of documentRecords) {
@@ -193,6 +194,23 @@ function ingestUploadedDocuments(payload: HandlerPayload): Record<string, unknow
         };
       }
       eligible.push({ document, text: extracted.text, extraction_kind: docxExtractionKind(bytes) });
+      continue;
+    }
+    if (documentIsPdf(document) && typeof document.content_base64 === 'string') {
+      const bytes = Buffer.from(document.content_base64, 'base64');
+      const extracted = await extractPdfText(bytes);
+      if (!extracted.ok) {
+        return {
+          status: 'blocked_extraction_failed',
+          full_text: '',
+          char_count: 0,
+          file_count: 0,
+          files_json: JSON.stringify(summaries),
+          extraction_kind: 'pdf',
+          reason: extracted.reason,
+        };
+      }
+      eligible.push({ document, text: extracted.text, extraction_kind: 'pdf_pdfjs' });
       continue;
     }
   }
@@ -277,6 +295,19 @@ function documentIsDocx(document: Record<string, unknown>): boolean {
       ? document.mimeType
       : '';
   return raw.toLowerCase() === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+function documentIsPdf(document: Record<string, unknown>): boolean {
+  const raw = typeof document.mime_type === 'string'
+    ? document.mime_type
+    : typeof document.mimeType === 'string'
+      ? document.mimeType
+      : '';
+  if (raw.toLowerCase() === 'application/pdf') {
+    return true;
+  }
+  const name = typeof document.name === 'string' ? document.name : typeof document.filename === 'string' ? document.filename : '';
+  return name.toLowerCase().endsWith('.pdf');
 }
 
 function combinedExtractionKind(kinds: string[]): string {
