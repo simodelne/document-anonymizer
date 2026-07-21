@@ -8,7 +8,7 @@ import { appTransport, createPgasClient } from '@simodelne/pgas-server/client.js
 import { createDocumentAnonymizerProgramEntry } from '../src/programs/document-anonymizer/registration.js';
 
 // Multi-line PDF (each line fits the page so no glyphs are dropped).
-function makePdf(lines: string[]): Uint8Array {
+function makePdf(lines: string[]): Uint8Array<ArrayBuffer> {
   const objs: string[] = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -26,7 +26,9 @@ function makePdf(lines: string[]): Uint8Array {
   pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
   for (const o of off) pdf += `${String(o).padStart(10, '0')} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
-  return new Uint8Array(Buffer.from(pdf, 'latin1'));
+  const bytes = new Uint8Array(Buffer.byteLength(pdf, 'latin1'));
+  bytes.set(Buffer.from(pdf, 'latin1'));
+  return bytes;
 }
 
 function effect(name: string, payload: Record<string, unknown>, channel = 'widget_output') {
